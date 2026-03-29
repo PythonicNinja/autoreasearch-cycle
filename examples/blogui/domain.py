@@ -20,7 +20,11 @@ from config import (
     OPTIMIZER_TIMEOUT_SECONDS,
 )
 
-from autoresearch_cycle.agent_runner import StructuredAgentConfig, run_structured_output
+from autoresearch_cycle.agent_runner import (
+    StructuredAgentConfig,
+    run_structured_output,
+    validate_required_fields,
+)
 from autoresearch_cycle.lighthouse import LighthouseConfig, LighthouseRunner
 
 OUTPUT_EXAMPLE = '{"change": "what you changed", "reason": "why", "files": ["list"]}'
@@ -89,21 +93,8 @@ If build succeeds, return exactly one JSON object and nothing else:
 
 
 def _validate_run_output(payload: dict[str, object]) -> dict[str, object]:
-    change = payload.get("change")
-    reason = payload.get("reason")
-    files = payload.get("files")
-
-    if not isinstance(change, str) or not change:
-        raise ValueError("missing change")
-    if not isinstance(reason, str) or not reason:
-        raise ValueError("missing reason")
-    if not isinstance(files, list) or not files:
-        raise ValueError("missing files")
-    if not all(isinstance(item, str) and item for item in files):
-        raise ValueError("invalid files")
-
-    return {
-        "change": change,
-        "reason": reason,
-        "files": files,
-    }
+    return validate_required_fields(
+        payload,
+        string_fields=("change", "reason"),
+        string_list_fields=("files",),
+    )

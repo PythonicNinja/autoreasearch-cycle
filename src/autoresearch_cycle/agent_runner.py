@@ -20,6 +20,31 @@ class StructuredAgentConfig:
     codex_bypass_approvals_and_sandbox: bool = True
 
 
+def validate_required_fields(
+    payload: dict[str, Any],
+    *,
+    string_fields: tuple[str, ...] = (),
+    string_list_fields: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    validated: dict[str, Any] = {}
+
+    for field in string_fields:
+        value = payload.get(field)
+        if not isinstance(value, str) or not value:
+            raise ValueError(f"missing {field}")
+        validated[field] = value
+
+    for field in string_list_fields:
+        value = payload.get(field)
+        if not isinstance(value, list) or not value:
+            raise ValueError(f"missing {field}")
+        if not all(isinstance(item, str) and item for item in value):
+            raise ValueError(f"invalid {field}")
+        validated[field] = value
+
+    return validated
+
+
 def run_structured_output(
     prompt: str,
     validator: Callable[[dict[str, Any]], T],

@@ -2,24 +2,15 @@ from __future__ import annotations
 
 import pytest
 
-from autoresearch_cycle.agent_runner import parse_structured_output
+from autoresearch_cycle.agent_runner import parse_structured_output, validate_required_fields
 
 
 def validate_output(payload: dict[str, object]) -> dict[str, object]:
-    change = payload.get("change")
-    reason = payload.get("reason")
-    files = payload.get("files")
-
-    if not isinstance(change, str) or not change:
-        raise ValueError("missing change")
-    if not isinstance(reason, str) or not reason:
-        raise ValueError("missing reason")
-    if not isinstance(files, list) or not files:
-        raise ValueError("missing files")
-    if not all(isinstance(item, str) and item for item in files):
-        raise ValueError("invalid files")
-
-    return {"change": change, "reason": reason, "files": files}
+    return validate_required_fields(
+        payload,
+        string_fields=("change", "reason"),
+        string_list_fields=("files",),
+    )
 
 
 def test_parse_structured_output_accepts_plain_json() -> None:
@@ -67,3 +58,19 @@ def test_parse_structured_output_rejects_invalid_shape() -> None:
 
     with pytest.raises(RuntimeError, match="invalid output"):
         parse_structured_output(payload, validate_output, "codex")
+
+
+def test_validate_required_fields_returns_requested_subset() -> None:
+    payload = {"change": "Tune spacing", "reason": "Clearer rhythm", "files": ["a.css"], "x": 1}
+
+    parsed = validate_required_fields(
+        payload,
+        string_fields=("change", "reason"),
+        string_list_fields=("files",),
+    )
+
+    assert parsed == {
+        "change": "Tune spacing",
+        "reason": "Clearer rhythm",
+        "files": ["a.css"],
+    }
