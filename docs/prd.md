@@ -1,5 +1,7 @@
 # PRD: Generic Autonomic Optimization Engine (Windowed Autoresearch Pattern)
 
+Archived note: this document captures the earlier broad-engine direction. The current repo scope is much smaller and centered on `examples/blogui/`.
+
 ## 1. Summary
 
 We want to build a generic optimization engine that implements the autoresearch pattern in a domain-agnostic way. The core abstraction:

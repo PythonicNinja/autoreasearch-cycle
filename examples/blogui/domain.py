@@ -1,39 +1,29 @@
 from __future__ import annotations
 
-import json
 import subprocess
 
-from autoresearch_cycle.agent_runner import StructuredAgentConfig, run_structured_output
 from config import (
     BLOG_BUILD_DIR,
-    BLOG_DIR,
     BLOG_COMPONENTS_GIT_PATH,
-    CODEX_BYPASS_APPROVALS_AND_SANDBOX,
+    BLOG_DIR,
     BLOG_EDIT_PATHS,
-    BLOG_GLOBAL_CSS_PATH,
     BLOG_GLOBAL_CSS_GIT_PATH,
+    BLOG_GLOBAL_CSS_PATH,
     BLOG_REPO_DIR,
+    CODEX_BYPASS_APPROVALS_AND_SANDBOX,
     LIGHTHOUSE_CATEGORIES,
     LIGHTHOUSE_CHROME_FLAGS,
+    LIGHTHOUSE_SETUP_TIMEOUT_SECONDS,
     LIGHTHOUSE_TIMEOUT_SECONDS,
     LIGHTHOUSE_URL,
     OPTIMIZER_AGENT,
     OPTIMIZER_TIMEOUT_SECONDS,
 )
 
-OUTPUT_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "change": {"type": "string", "minLength": 1},
-        "reason": {"type": "string", "minLength": 1},
-        "files": {
-            "type": "array",
-            "items": {"type": "string", "minLength": 1},
-        },
-    },
-    "required": ["change", "reason", "files"],
-    "additionalProperties": False,
-}
+from autoresearch_cycle.agent_runner import StructuredAgentConfig, run_structured_output
+from autoresearch_cycle.lighthouse import LighthouseConfig, LighthouseRunner
+
+OUTPUT_EXAMPLE = '{"change": "what you changed", "reason": "why", "files": ["list"]}'
 
 OPTIMIZER_CONFIG = StructuredAgentConfig(
     agent=OPTIMIZER_AGENT,
@@ -41,11 +31,19 @@ OPTIMIZER_CONFIG = StructuredAgentConfig(
     timeout_seconds=OPTIMIZER_TIMEOUT_SECONDS,
     codex_bypass_approvals_and_sandbox=CODEX_BYPASS_APPROVALS_AND_SANDBOX,
 )
+LIGHTHOUSE_CONFIG = LighthouseConfig(
+    cwd=BLOG_DIR,
+    url=LIGHTHOUSE_URL,
+    categories=LIGHTHOUSE_CATEGORIES,
+    chrome_flags=LIGHTHOUSE_CHROME_FLAGS,
+    setup_timeout_seconds=LIGHTHOUSE_SETUP_TIMEOUT_SECONDS,
+    timeout_seconds=LIGHTHOUSE_TIMEOUT_SECONDS,
+)
 
 
 class BlogUIDomain:
     def __init__(self) -> None:
-        self._lighthouse_prepared = False
+        self._lighthouse = LighthouseRunner(LIGHTHOUSE_CONFIG)
 
     def read_policy(self) -> dict[str, object]:
         if not BLOG_GLOBAL_CSS_PATH.exists():
@@ -63,37 +61,17 @@ Make ONE focused improvement to readability or aesthetics.
 Then run: cd {BLOG_BUILD_DIR} && npm run build
 If build fails: git checkout {" ".join(BLOG_EDIT_PATHS)} and stop.
 If build succeeds, return exactly one JSON object and nothing else:
-{{"change": "what you changed", "reason": "why", "files": ["list"]}}
+{OUTPUT_EXAMPLE}
 """
         print(f"Running {OPTIMIZER_AGENT} optimizer...", flush=True)
-        return run_structured_output(prompt, OUTPUT_SCHEMA, OPTIMIZER_CONFIG)
+        return run_structured_output(prompt, _validate_run_output, OPTIMIZER_CONFIG)
 
     def evaluate(self, run_output: dict[str, object]) -> float:
         del run_output
-        command = self._lighthouse_command()
-        try:
-            result = subprocess.run(
-                command,
-                stdin=subprocess.DEVNULL,
-                capture_output=True,
-                text=True,
-                cwd=BLOG_DIR,
-                timeout=LIGHTHOUSE_TIMEOUT_SECONDS,
-                check=False,
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise RuntimeError(
-                f"Lighthouse timed out after {LIGHTHOUSE_TIMEOUT_SECONDS} seconds "
-                f"for {LIGHTHOUSE_URL}. Command: {' '.join(command)}"
-            ) from exc
-        if result.returncode != 0:
-            raise RuntimeError(
-                result.stderr
-                or result.stdout
-                or "Lighthouse failed. If this is the first run, try: "
-                f'cd "{BLOG_DIR}" && npx --yes lighthouse --version'
-            )
-        scores = json.loads(result.stdout)
+        if not self._lighthouse.prepared:
+            print("Preparing Lighthouse CLI...", flush=True)
+        print(f"Running Lighthouse against {LIGHTHOUSE_URL}...", flush=True)
+        scores = self._lighthouse.run_report()
         a11y = scores["categories"]["accessibility"]["score"]
         perf = scores["categories"]["performance"]["score"]
         return (a11y + perf) / 2
@@ -109,20 +87,23 @@ If build succeeds, return exactly one JSON object and nothing else:
             check=False,
         )
 
-    def _lighthouse_command(self) -> list[str]:
-        local_binary = BLOG_DIR / "node_modules/.bin/lighthouse"
-        executable = str(local_binary) if local_binary.exists() else "npx"
-        command = [executable]
-        if executable == "npx":
-            command.extend(["--yes", "lighthouse"])
-        command.extend(
-            [
-                LIGHTHOUSE_URL,
-                "--output=json",
-                "--quiet",
-                f"--only-categories={LIGHTHOUSE_CATEGORIES}",
-                f"--chrome-flags={LIGHTHOUSE_CHROME_FLAGS}",
-            ]
-        )
-        return command
 
+def _validate_run_output(payload: dict[str, object]) -> dict[str, object]:
+    change = payload.get("change")
+    reason = payload.get("reason")
+    files = payload.get("files")
+
+    if not isinstance(change, str) or not change:
+        raise ValueError("missing change")
+    if not isinstance(reason, str) or not reason:
+        raise ValueError("missing reason")
+    if not isinstance(files, list) or not files:
+        raise ValueError("missing files")
+    if not all(isinstance(item, str) and item for item in files):
+        raise ValueError("invalid files")
+
+    return {
+        "change": change,
+        "reason": reason,
+        "files": files,
+    }

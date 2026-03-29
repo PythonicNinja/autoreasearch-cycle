@@ -4,74 +4,69 @@
 
 - Python 3.10+
 - `uv`
+- Node.js and `npm`
+- Google Chrome
+- `claude` or `codex`
+- the sibling repo `/Users/pythonicninja/PycharmProjects/pythonic-ninja-blog`
 
-## Install
+## Python Environment
 
 ```bash
+cd /Users/pythonicninja/PycharmProjects/autoresearch-cycle
 uv sync --dev
 ```
 
-If your environment is configured with a private package index and dependency resolution fails, run:
+If dependency resolution is forced through a private index, use:
 
 ```bash
 UV_DEFAULT_INDEX=https://pypi.org/simple uv sync --dev
 ```
 
-## Data Directory
+## Blog App
 
-The application stores local state in `.autoresearch/` under the current working directory by default.
-
-Override it with:
+Run the blog dev server from the sibling repo:
 
 ```bash
-export AUTORESEARCH_DATA_DIR=/absolute/path/to/data
+cd /Users/pythonicninja/PycharmProjects/pythonic-ninja-blog/web
+npm run dev
 ```
 
-The data directory contains:
+The experiment expects the app at `http://localhost:4321`.
 
-- `policies/`
-- `experiments/`
-- `runs/`
-- `optimizer_proposals/`
-- `audit/audit.jsonl`
-
-## Run the CLI
+## Run the Experiment
 
 ```bash
-uv run autoresearch domain list
-uv run autoresearch experiment create --file examples/synthetic/experiment.json --data-dir /tmp/autoresearch-demo
-uv run autoresearch experiment list --data-dir /tmp/autoresearch-demo
-uv run autoresearch experiment run <experiment-id> --data-dir /tmp/autoresearch-demo
-uv run autoresearch run list --data-dir /tmp/autoresearch-demo
+cd /Users/pythonicninja/PycharmProjects/autoresearch-cycle
+./examples/blogui/run.sh
 ```
 
-## Run the API
+Results are written to:
+
+```text
+/tmp/blog-ui-research
+```
+
+## Troubleshooting
+
+Private package index errors:
 
 ```bash
-uv run autoresearch serve --host 127.0.0.1 --port 8000
+UV_DEFAULT_INDEX=https://pypi.org/simple uv sync --dev
 ```
 
-Health check:
+Blog server not reachable:
 
 ```bash
-curl http://127.0.0.1:8000/healthz
+curl -I http://localhost:4321
 ```
 
-## Development
-
-Run tests:
+Lighthouse first-run setup:
 
 ```bash
-uv run pytest
+cd /Users/pythonicninja/PycharmProjects/pythonic-ninja-blog/web
+npx --yes lighthouse --version
 ```
 
-Run Ruff:
+Switch agent:
 
-```bash
-uv run ruff check .
-```
-
-## Notes
-
-- v1 uses explicit synchronous execution. There is no scheduler or background worker yet.
-- The synthetic adapter evaluates windows immediately instead of waiting in real time.
+Edit `examples/blogui/config.py` and change `OPTIMIZER_AGENT`.

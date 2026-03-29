@@ -9,7 +9,6 @@ BLOG_DIR = PROJECTS_DIR / "pythonic-ninja-blog" / "web"
 BLOG_REPO_DIR = BLOG_DIR.parent
 DATA_DIR = Path("/tmp/blog-ui-research")
 BLOG_GLOBAL_CSS_PATH = BLOG_DIR / "public/styles/global.css"
-BLOG_COMPONENTS_DIR = BLOG_DIR / "src/components"
 BLOG_BUILD_DIR = "web"
 BLOG_GLOBAL_CSS_GIT_PATH = "web/public/styles/global.css"
 BLOG_COMPONENTS_GIT_PATH = "web/src/components/"

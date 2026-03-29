@@ -1,72 +1,62 @@
 # autoresearch-cycle
 
-`autoresearch-cycle` is a local-first reference implementation of the autoresearch pattern: define a policy, constrain how an optimizer can change it, evaluate candidate policies in fixed windows, and persist the resulting run history for inspection.
+`autoresearch-cycle` is a small local helper repo for running agent-driven iterations against the `pythonic-ninja-blog` UI.
 
-This repository currently ships a Python scaffold with:
-
-- a shared engine and service layer
-- a Typer CLI
-- a FastAPI control plane
-- file-backed JSON storage with an audit log
-- a synthetic domain adapter and random optimizer for end-to-end demos
+The active use case is `examples/blogui/`, not the older generic API/CLI scaffold. The shared package under `src/autoresearch_cycle/` now only contains the agent runner used by that example.
 
 ## Quickstart
+
+Install the Python dev environment:
 
 ```bash
 uv sync --dev
 ```
 
-If your environment is pinned to a private package index, use:
+If your machine is pinned to a private package index, force PyPI:
 
 ```bash
 UV_DEFAULT_INDEX=https://pypi.org/simple uv sync --dev
 ```
 
-## Quick Demo
-
-Use an isolated data directory so the example stays self-contained:
+Start the blog dev server in another terminal:
 
 ```bash
-uv run autoresearch domain list
-
-uv run autoresearch experiment create \
-  --file examples/synthetic/experiment.json \
-  --data-dir /tmp/autoresearch-demo \
-  --json
-
-uv run autoresearch experiment run <experiment-id> \
-  --data-dir /tmp/autoresearch-demo \
-  --json
-
-uv run autoresearch run list \
-  --data-dir /tmp/autoresearch-demo \
-  --json
+cd /Users/pythonicninja/PycharmProjects/pythonic-ninja-blog/web
+npm run dev
 ```
 
-By default the app stores state in `.autoresearch/` under the current working directory. Override it with `AUTORESEARCH_DATA_DIR=/path/to/data` or `--data-dir /path/to/data`.
+Optional one-time Lighthouse warmup:
+
+```bash
+cd /Users/pythonicninja/PycharmProjects/pythonic-ninja-blog/web
+npx --yes lighthouse --version
+```
+
+Run one autoresearch loop:
+
+```bash
+cd /Users/pythonicninja/PycharmProjects/autoresearch-cycle
+./examples/blogui/run.sh
+```
+
+To switch the optimizer, edit `OPTIMIZER_AGENT` in `examples/blogui/config.py`. Supported values are `"claude"` and `"codex"`.
 
 ## Repository Map
 
-- `docs/prd.md` - full product requirements document
-- `docs/setup.md` - local setup, development, and runtime notes
-- `docs/interfaces.md` - core models, storage layout, CLI, and HTTP interfaces
-- `docs/examples.md` - runnable walkthroughs for the synthetic demo
-- `examples/synthetic/` - minimal API payloads and output snapshots
-- `examples/blogui/` - end-to-end UI autoresearch example
-- `src/autoresearch_cycle/` - package source
-- `tests/` - unit and integration tests
-
-## Main Commands
-
-```bash
-uv run autoresearch domain list
-uv run autoresearch experiment create --file examples/synthetic/experiment.json
-uv run autoresearch experiment list
-uv run autoresearch experiment run <experiment-id>
-uv run autoresearch run list
-uv run autoresearch serve
-```
+- `examples/blogui/` - the runnable experiment
+- `src/autoresearch_cycle/` - small shared helpers for agent execution, JSON files, readiness checks, and Lighthouse
+- `tests/test_agent_runner.py` - regression tests for the shared runner
+- `docs/setup.md` - requirements and troubleshooting
+- `docs/examples.md` - step-by-step blog UI walkthrough
+- `docs/prd.md` - archived early design notes from the broader engine idea
 
 ## Current Scope
 
-This is an MVP scaffold. It focuses on explicit local execution, file-backed persistence, and one synthetic reference domain. It does not yet include scheduling, auth, distributed execution, or production hardening.
+This repo is intentionally narrow:
+
+- no FastAPI service
+- no Typer CLI
+- no synthetic example domain
+- no file-backed experiment engine
+
+It exists to keep the blog UI experiment logic small while centralizing the agent-specific subprocess and parsing behavior in one place.

@@ -3,14 +3,13 @@ from __future__ import annotations
 import json
 import subprocess
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
-
-from jsonschema import ValidationError
-from jsonschema.validators import Draft202012Validator
+from typing import Any, Literal, TypeVar
 
 AgentName = Literal["claude", "codex"]
+T = TypeVar("T")
 
 
 @dataclass(frozen=True)
@@ -23,24 +22,23 @@ class StructuredAgentConfig:
 
 def run_structured_output(
     prompt: str,
-    schema: dict[str, Any],
+    validator: Callable[[dict[str, Any]], T],
     config: StructuredAgentConfig,
-) -> dict[str, Any]:
-    raw_output = _run_agent(prompt, schema, config)
-    return parse_structured_output(raw_output, schema, config.agent)
+) -> T:
+    raw_output = _run_agent(prompt, config)
+    return parse_structured_output(raw_output, validator, config.agent)
 
 
 def parse_structured_output(
     raw_output: str,
-    schema: dict[str, Any],
+    validator: Callable[[dict[str, Any]], T],
     agent: AgentName,
-) -> dict[str, Any]:
+) -> T:
     payload = raw_output.strip()
     if not payload:
         raise RuntimeError(f"{agent} returned empty output")
 
     candidates = _collect_json_candidates(payload)
-    validator = Draft202012Validator(schema)
     seen: set[str] = set()
     index = 0
 
@@ -67,26 +65,23 @@ def parse_structured_output(
             candidates.extend(_collect_json_candidates(nested_result.strip()))
 
         try:
-            validator.validate(parsed)
-        except ValidationError:
+            return validator(parsed)
+        except (TypeError, ValueError, KeyError):
             continue
 
-        return parsed
-
     raise RuntimeError(
-        f"{agent} returned invalid output; expected JSON matching schema: {payload[:500]}"
+        f"{agent} returned invalid output for the expected shape: {payload[:500]}"
     )
 
 
 def _run_agent(
     prompt: str,
-    schema: dict[str, Any],
     config: StructuredAgentConfig,
 ) -> str:
     if config.agent == "claude":
         return _run_claude(prompt, config)
     if config.agent == "codex":
-        return _run_codex(prompt, schema, config)
+        return _run_codex(prompt, config)
     raise ValueError(f"Unsupported agent={config.agent!r}. Use 'claude' or 'codex'.")
 
 
@@ -120,18 +115,12 @@ def _run_claude(prompt: str, config: StructuredAgentConfig) -> str:
 
 def _run_codex(
     prompt: str,
-    schema: dict[str, Any],
     config: StructuredAgentConfig,
 ) -> str:
     with tempfile.NamedTemporaryFile(
         mode="w", encoding="utf-8", suffix=".txt", delete=False
     ) as output_file:
         output_path = Path(output_file.name)
-    with tempfile.NamedTemporaryFile(
-        mode="w", encoding="utf-8", suffix=".json", delete=False
-    ) as schema_file:
-        schema_path = Path(schema_file.name)
-        schema_path.write_text(json.dumps(schema), encoding="utf-8")
 
     try:
         command = [
@@ -139,8 +128,6 @@ def _run_codex(
             "exec",
             "--output-last-message",
             str(output_path),
-            "--output-schema",
-            str(schema_path),
         ]
         if config.codex_bypass_approvals_and_sandbox:
             command.append("--dangerously-bypass-approvals-and-sandbox")
@@ -166,7 +153,6 @@ def _run_codex(
         return output_path.read_text(encoding="utf-8")
     finally:
         output_path.unlink(missing_ok=True)
-        schema_path.unlink(missing_ok=True)
 
 
 def _collect_json_candidates(payload: str) -> list[str]:

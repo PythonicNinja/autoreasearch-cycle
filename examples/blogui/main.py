@@ -1,11 +1,7 @@
 from __future__ import annotations
 
 import json
-import time
-import urllib.error
-import urllib.request
 from datetime import datetime, timezone
-from pathlib import Path
 
 from config import (
     BLOG_DIR,
@@ -21,9 +17,8 @@ from config import (
 )
 from domain import BlogUIDomain
 
-
-def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+from autoresearch_cycle.experiment_io import append_json_list, utc_now_iso, write_json
+from autoresearch_cycle.readiness import wait_for_url
 
 
 def build_experiment() -> dict[str, object]:
@@ -34,23 +29,8 @@ def build_experiment() -> dict[str, object]:
         "optimizer_agent": OPTIMIZER_AGENT,
         "max_iterations": MAX_ITERATIONS,
         "eval_threshold": EVAL_THRESHOLD,
-        "created_at": utc_now(),
+        "created_at": utc_now_iso(),
     }
-
-
-def write_json(path: Path, payload: object) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-
-
-def append_run(path: Path, run: dict[str, object]) -> list[dict[str, object]]:
-    if path.exists():
-        runs = json.loads(path.read_text(encoding="utf-8"))
-    else:
-        runs = []
-    runs.append(run)
-    write_json(path, runs)
-    return runs
 
 
 def dev_server_command() -> str:
@@ -58,30 +38,17 @@ def dev_server_command() -> str:
 
 
 def ensure_dev_server_ready() -> None:
-    deadline = time.monotonic() + DEV_SERVER_WAIT_SECONDS
-    last_error: Exception | None = None
-
-    while time.monotonic() < deadline:
-        try:
-            request = urllib.request.Request(
-                LIGHTHOUSE_URL,
-                method="HEAD",
-                headers={"User-Agent": "autoresearch-blogui-check"},
-            )
-            with urllib.request.urlopen(
-                request, timeout=DEV_SERVER_REQUEST_TIMEOUT_SECONDS
-            ) as response:
-                if 200 <= response.status < 500:
-                    return
-        except (urllib.error.URLError, TimeoutError, OSError) as exc:
-            last_error = exc
-            time.sleep(1)
-
-    detail = f" ({last_error})" if last_error else ""
-    raise RuntimeError(
-        f"Blog dev server is not reachable at {LIGHTHOUSE_URL}{detail}\n"
-        f"Start it in another terminal:\n  {dev_server_command()}"
-    )
+    try:
+        wait_for_url(
+            LIGHTHOUSE_URL,
+            total_timeout_seconds=DEV_SERVER_WAIT_SECONDS,
+            request_timeout_seconds=DEV_SERVER_REQUEST_TIMEOUT_SECONDS,
+            user_agent="autoresearch-blogui-check",
+        )
+    except RuntimeError as exc:
+        raise RuntimeError(
+            f"{exc}\nStart it in another terminal:\n  {dev_server_command()}"
+        ) from exc
 
 
 def main() -> None:
@@ -114,9 +81,9 @@ def main() -> None:
             "output": run_output,
             "score": score,
             "accepted": accepted,
-            "created_at": utc_now(),
+            "created_at": utc_now_iso(),
         }
-        runs = append_run(runs_path, run_record)
+        runs = append_json_list(runs_path, run_record)
 
         if accepted:
             domain.commit(str(run_output["change"]), iteration)
