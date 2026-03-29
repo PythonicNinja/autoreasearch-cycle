@@ -1,15 +1,21 @@
 from __future__ import annotations
 
 import json
+import time
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
 from config import (
     BLOG_DIR,
     DATA_DIR,
+    DEV_SERVER_REQUEST_TIMEOUT_SECONDS,
+    DEV_SERVER_WAIT_SECONDS,
     DOMAIN_ID,
     EVAL_THRESHOLD,
     EXPERIMENT_NAME,
+    LIGHTHOUSE_URL,
     MAX_ITERATIONS,
     OPTIMIZER_AGENT,
 )
@@ -47,10 +53,44 @@ def append_run(path: Path, run: dict[str, object]) -> list[dict[str, object]]:
     return runs
 
 
+def dev_server_command() -> str:
+    return f'cd "{BLOG_DIR}" && npm run dev'
+
+
+def ensure_dev_server_ready() -> None:
+    deadline = time.monotonic() + DEV_SERVER_WAIT_SECONDS
+    last_error: Exception | None = None
+
+    while time.monotonic() < deadline:
+        try:
+            request = urllib.request.Request(
+                LIGHTHOUSE_URL,
+                method="HEAD",
+                headers={"User-Agent": "autoresearch-blogui-check"},
+            )
+            with urllib.request.urlopen(
+                request, timeout=DEV_SERVER_REQUEST_TIMEOUT_SECONDS
+            ) as response:
+                if 200 <= response.status < 500:
+                    return
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            last_error = exc
+            time.sleep(1)
+
+    detail = f" ({last_error})" if last_error else ""
+    raise RuntimeError(
+        f"Blog dev server is not reachable at {LIGHTHOUSE_URL}{detail}\n"
+        f"Start it in another terminal:\n  {dev_server_command()}"
+    )
+
+
 def main() -> None:
     print("Start the blog dev server in another terminal:")
-    print(f'  cd "{BLOG_DIR}" && npm run dev\n')
+    print(f"  {dev_server_command()}\n")
     print(f"Optimizer agent: {OPTIMIZER_AGENT}")
+    print(f"Checking blog dev server at {LIGHTHOUSE_URL}...", flush=True)
+    ensure_dev_server_ready()
+    print("Blog dev server is reachable.\n", flush=True)
 
     domain = BlogUIDomain()
     experiment = build_experiment()
