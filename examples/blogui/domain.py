@@ -14,6 +14,7 @@ from config import (
     BLOG_GLOBAL_CSS_GIT_PATH,
     BLOG_REPO_DIR,
     LIGHTHOUSE_CATEGORIES,
+    LIGHTHOUSE_CHROME_FLAGS,
     LIGHTHOUSE_TIMEOUT_SECONDS,
     LIGHTHOUSE_URL,
     OPTIMIZER_AGENT,
@@ -43,6 +44,9 @@ OPTIMIZER_CONFIG = StructuredAgentConfig(
 
 
 class BlogUIDomain:
+    def __init__(self) -> None:
+        self._lighthouse_prepared = False
+
     def read_policy(self) -> dict[str, object]:
         if not BLOG_GLOBAL_CSS_PATH.exists():
             raise FileNotFoundError(f"Expected stylesheet at {BLOG_GLOBAL_CSS_PATH}")
@@ -66,17 +70,11 @@ If build succeeds, return exactly one JSON object and nothing else:
 
     def evaluate(self, run_output: dict[str, object]) -> float:
         del run_output
-        print(f"Running Lighthouse against {LIGHTHOUSE_URL}...", flush=True)
+        command = self._lighthouse_command()
         try:
             result = subprocess.run(
-                [
-                    "npx",
-                    "lighthouse",
-                    LIGHTHOUSE_URL,
-                    "--output=json",
-                    "--quiet",
-                    f"--only-categories={LIGHTHOUSE_CATEGORIES}",
-                ],
+                command,
+                stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
                 cwd=BLOG_DIR,
@@ -86,10 +84,15 @@ If build succeeds, return exactly one JSON object and nothing else:
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError(
                 f"Lighthouse timed out after {LIGHTHOUSE_TIMEOUT_SECONDS} seconds "
-                f"for {LIGHTHOUSE_URL}"
+                f"for {LIGHTHOUSE_URL}. Command: {' '.join(command)}"
             ) from exc
         if result.returncode != 0:
-            raise RuntimeError(result.stderr or result.stdout or "Lighthouse failed")
+            raise RuntimeError(
+                result.stderr
+                or result.stdout
+                or "Lighthouse failed. If this is the first run, try: "
+                f'cd "{BLOG_DIR}" && npx --yes lighthouse --version'
+            )
         scores = json.loads(result.stdout)
         a11y = scores["categories"]["accessibility"]["score"]
         perf = scores["categories"]["performance"]["score"]
@@ -105,3 +108,21 @@ If build succeeds, return exactly one JSON object and nothing else:
             cwd=BLOG_REPO_DIR,
             check=False,
         )
+
+    def _lighthouse_command(self) -> list[str]:
+        local_binary = BLOG_DIR / "node_modules/.bin/lighthouse"
+        executable = str(local_binary) if local_binary.exists() else "npx"
+        command = [executable]
+        if executable == "npx":
+            command.extend(["--yes", "lighthouse"])
+        command.extend(
+            [
+                LIGHTHOUSE_URL,
+                "--output=json",
+                "--quiet",
+                f"--only-categories={LIGHTHOUSE_CATEGORIES}",
+                f"--chrome-flags={LIGHTHOUSE_CHROME_FLAGS}",
+            ]
+        )
+        return command
+

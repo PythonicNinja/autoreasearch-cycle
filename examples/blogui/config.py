@@ -23,6 +23,13 @@ MAX_ITERATIONS = 5
 BLOG_EDIT_PATHS = ("web/public/styles/", BLOG_COMPONENTS_GIT_PATH)
 LIGHTHOUSE_URL = "http://localhost:4321"
 LIGHTHOUSE_CATEGORIES = "accessibility,performance"
+LIGHTHOUSE_CHROME_FLAGS = (
+    "--headless=new "
+    "--disable-gpu "
+    "--no-first-run "
+    "--no-default-browser-check"
+)
+LIGHTHOUSE_SETUP_TIMEOUT_SECONDS = 600
 DEV_SERVER_WAIT_SECONDS = 10
 DEV_SERVER_REQUEST_TIMEOUT_SECONDS = 2
 LIGHTHOUSE_TIMEOUT_SECONDS = 180
